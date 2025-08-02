@@ -5,6 +5,7 @@ import matplotlib.ticker as ticker
 import subprocess
 import os
 import numpy as np
+from matplotlib.colors import LinearSegmentedColormap
 
 # Load the dataset
 df = pd.read_csv("freelancer_hourly_rates_2015_2025_monthly.csv")
@@ -12,6 +13,10 @@ df = pd.read_csv("freelancer_hourly_rates_2015_2025_monthly.csv")
 # Setup the plot
 fig, ax = plt.subplots(figsize=(12, 7))
 plt.rcParams['font.family'] = 'DejaVu Sans'
+
+# Create a color palette for different professions
+colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', 
+          '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
 
 # Get all unique years and create interpolated frames
 years = sorted(df['Year'].unique())
@@ -73,7 +78,9 @@ def draw_frame(frame_idx):
                 break
     
     if len(dff) > 0:
-        bars = ax.barh(dff['Profession'], dff['HourlyRate'], color='#A3BFFA', alpha=0.8)
+        # Assign different colors to each bar
+        bar_colors = [colors[i % len(colors)] for i in range(len(dff))]
+        bars = ax.barh(dff['Profession'], dff['HourlyRate'], color=bar_colors, alpha=0.8)
         
         # Add smooth animation effect to bars
         for i, bar in enumerate(bars):
