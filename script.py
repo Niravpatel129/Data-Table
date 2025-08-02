@@ -11,12 +11,19 @@ from matplotlib.colors import LinearSegmentedColormap
 df = pd.read_csv("freelancer_hourly_rates_2015_2025_monthly.csv")
 
 # Setup the plot
-fig, ax = plt.subplots(figsize=(12, 7))
+fig, ax = plt.subplots(figsize=(14, 7))
 plt.rcParams['font.family'] = 'DejaVu Sans'
+plt.subplots_adjust(left=0.2, right=0.95, top=0.9, bottom=0.1)
 
 # Create a color palette for different professions
 colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', 
           '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9']
+
+# Create a consistent color mapping for professions
+all_professions = sorted(df['Profession'].unique())
+profession_colors = {}
+for i, profession in enumerate(all_professions):
+    profession_colors[profession] = colors[i % len(colors)]
 
 # Get all unique years and create interpolated frames
 years = sorted(df['Year'].unique())
@@ -77,18 +84,68 @@ def draw_frame(frame_idx):
                 dff = dff.sort_values(by='HourlyRate', ascending=True).tail(10)
                 break
     
+    # Add smooth position transitions
+    if frame_idx > 0:
+        prev_year = smooth_years[frame_idx - 1]
+        if prev_year in years:
+            prev_dff = df[df['Year'] == prev_year].sort_values(by='HourlyRate', ascending=True).tail(10)
+        else:
+            for i in range(len(years) - 1):
+                if years[i] <= prev_year <= years[i + 1]:
+                    year1, year2 = years[i], years[i + 1]
+                    alpha = (prev_year - year1) / (year2 - year1)
+                    prev_dff = interpolate_data(year1, year2, alpha)
+                    prev_dff = prev_dff.sort_values(by='HourlyRate', ascending=True).tail(10)
+                    break
+        
+        # Create smooth position interpolation
+        transition_factor = 0.3  # Controls how smooth the transition is
+        if len(dff) > 0 and len(prev_dff) > 0:
+            # Create a mapping of professions to their target positions
+            target_positions = {prof: i for i, prof in enumerate(dff['Profession'])}
+            current_positions = {prof: i for i, prof in enumerate(prev_dff['Profession'])}
+            
+            # Interpolate positions for smooth transitions
+            interpolated_positions = {}
+            for profession in set(target_positions.keys()) | set(current_positions.keys()):
+                if profession in target_positions and profession in current_positions:
+                    # Smooth transition between positions
+                    start_pos = current_positions[profession]
+                    end_pos = target_positions[profession]
+                    interpolated_pos = start_pos + (end_pos - start_pos) * transition_factor
+                    interpolated_positions[profession] = interpolated_pos
+                elif profession in target_positions:
+                    # New profession entering
+                    interpolated_positions[profession] = target_positions[profession]
+                else:
+                    # Profession leaving (fade out effect)
+                    continue
+            
+            # Sort by interpolated positions
+            sorted_professions = sorted(interpolated_positions.items(), key=lambda x: x[1])
+            dff = dff[dff['Profession'].isin([prof for prof, _ in sorted_professions])].copy()
+            dff = dff.set_index('Profession').reindex([prof for prof, _ in sorted_professions]).reset_index()
+    
     if len(dff) > 0:
-        # Assign different colors to each bar
-        bar_colors = [colors[i % len(colors)] for i in range(len(dff))]
+        # Assign colors based on profession for consistency
+        bar_colors = [profession_colors.get(profession, '#CCCCCC') for profession in dff['Profession']]
         bars = ax.barh(dff['Profession'], dff['HourlyRate'], color=bar_colors, alpha=0.8)
         
-        # Add smooth animation effect to bars
+        # Add smooth animation effect to bars with position transitions
         for i, bar in enumerate(bars):
             bar.set_width(dff.iloc[i]['HourlyRate'])
+            # Add subtle glow effect for transitioning bars
+            if frame_idx > 0 and frame_idx < len(smooth_years) - 1:
+                bar.set_alpha(0.9)  # Slightly more opaque during transitions
         
         dx = dff['HourlyRate'].max() / 200
         for i, (value, name) in enumerate(zip(dff['HourlyRate'], dff['Profession'])):
-            ax.text(value - dx, i, f'${value:.2f}', size=12, weight='bold', ha='right', va='center', color='#1F2937')
+            # Add subtle animation to text during transitions
+            text_alpha = 1.0
+            if frame_idx > 0 and frame_idx < len(smooth_years) - 1:
+                text_alpha = 0.95  # Slightly transparent during transitions
+            ax.text(value - dx, i, f'${value:.2f}', size=12, weight='bold', ha='right', va='center', 
+                   color='#1F2937', alpha=text_alpha)
 
     int_year = int(current_year)
     month_index = int(round((current_year - int_year) * 12))
